@@ -384,9 +384,14 @@ struct PodmanArgs {
     /// Create an infra container and associate it with the pod.
     ///
     /// Set by default and cannot be disabled as it is required by Quadlet.
-    #[arg(long, action = ArgAction::SetTrue)]
+    #[arg(
+        long,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true"
+    )]
     #[serde(skip)]
-    infra: (),
+    infra: Option<bool>,
 
     /// The command that is run to start the infra container.
     ///
@@ -491,11 +496,40 @@ impl Display for PodmanArgs {
 
 #[cfg(test)]
 mod tests {
+    use clap::Parser;
+
+    use crate::cli::{Cli, Commands, PodmanCommands};
+
     use super::*;
 
     #[test]
     fn podman_args_default_display_empty() {
         let args = PodmanArgs::default();
         assert!(args.to_string().is_empty());
+    }
+
+    #[test]
+    fn podman_args_infra_accepts_bool_value() {
+        for (arg, expected) in [
+            ("--infra", Some(true)),
+            ("--infra=true", Some(true)),
+            ("--infra=false", Some(false)),
+        ] {
+            let cli = <Cli as Parser>::try_parse_from([
+                "podlet", "podman", "pod", "create", arg, "--share=", "pod",
+            ])
+            .expect("arguments should parse");
+            let parsed = if let Commands::Podman {
+                command: PodmanCommands::Pod { pod },
+                ..
+            } = cli.command
+            {
+                let Pod::Create { create } = *pod;
+                Some((create.podman_args.infra, create.podman_args.share))
+            } else {
+                None
+            };
+            assert_eq!(parsed, Some((expected, Some(String::new()))), "{arg}");
+        }
     }
 }
